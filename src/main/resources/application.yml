@@ -1,0 +1,5 @@
+xivapi:
+  api-key: ${XIVAPI_API_KEY}
+discord:
+  token: ${DISCORD_TOKEN}
+  guild-id: ${DISCORD_GUILD_ID}
