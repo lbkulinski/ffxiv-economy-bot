@@ -9,6 +9,6 @@ public record Item(
 
     @JsonAlias("Name") String name,
 
-    @JsonAlias("Recipes") List<Recipes> recipes
+    @JsonAlias("Recipes") List<Recipe> recipes
 ) {
 }
