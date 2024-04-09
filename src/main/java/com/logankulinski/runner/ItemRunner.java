@@ -1,7 +1,9 @@
 package com.logankulinski.runner;
 
 import com.logankulinski.client.XIVAPIClient;
+import com.logankulinski.model.Ingredient;
 import com.logankulinski.model.Item;
+import com.logankulinski.model.Recipe;
 import com.logankulinski.model.Result;
 import discord4j.core.DiscordClient;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
@@ -92,7 +94,33 @@ public class ItemRunner implements ApplicationRunner {
 
         Item item = this.xivapiClient.getItem(id);
 
-        return event.reply("Item found: %s".formatted(item));
+        StringBuilder stringBuilder = new StringBuilder();
+
+        stringBuilder.append("Item found! ID: %s%n".formatted(id));
+
+        for (Item.Recipe itemRecipe : item.recipes()) {
+            String recipeId = itemRecipe.id();
+
+            Recipe recipe = this.xivapiClient.getRecipe(recipeId);
+
+            stringBuilder.append("%nRecipe found! ID: %s%n".formatted(recipeId));
+
+            for (Ingredient ingredient : recipe.ingredients()) {
+                if (ingredient == null) {
+                    continue;
+                }
+
+                String ingredientName = ingredient.name();
+
+                int amount = ingredient.amount();
+
+                stringBuilder.append("- %d of %s%n".formatted(amount, ingredientName));
+            }
+        }
+
+        String message = stringBuilder.toString();
+
+        return event.reply(message);
     }
 
     @Override

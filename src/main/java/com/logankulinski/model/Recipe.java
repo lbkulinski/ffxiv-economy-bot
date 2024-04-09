@@ -1,12 +1,16 @@
 package com.logankulinski.model;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.logankulinski.serialization.RecipeDeserializer;
 
+import java.util.List;
+
+@JsonDeserialize(using = RecipeDeserializer.class)
 public record Recipe(
-    @JsonAlias("ID") int id,
+    String id,
 
-    @JsonAlias("Level") int level,
+    String name,
 
-    @JsonAlias("ClassJobID") int classJobId
+    List<Ingredient> ingredients
 ) {
 }

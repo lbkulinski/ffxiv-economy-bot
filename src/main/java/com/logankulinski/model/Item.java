@@ -11,4 +11,12 @@ public record Item(
 
     @JsonAlias("Recipes") List<Recipe> recipes
 ) {
+    public record Recipe(
+        @JsonAlias("ID") String id,
+
+        @JsonAlias("Level") int level,
+
+        @JsonAlias("ClassJobID") int classJobId
+    ) {
+    }
 }

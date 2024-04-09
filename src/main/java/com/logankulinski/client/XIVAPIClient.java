@@ -1,6 +1,7 @@
 package com.logankulinski.client;
 
 import com.logankulinski.model.Item;
+import com.logankulinski.model.Recipe;
 import com.logankulinski.model.SearchResponse;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -12,4 +13,7 @@ public interface XIVAPIClient {
 
     @GetExchange("/Item/{id}")
     Item getItem(@PathVariable String id);
+
+    @GetExchange("/Recipe/{id}")
+    Recipe getRecipe(@PathVariable String id);
 }
