@@ -12,8 +12,8 @@ public interface XIVAPIClient {
     SearchResponse search(@RequestParam("string") String name);
 
     @GetExchange("/Item/{id}")
-    Item getItem(@PathVariable String id);
+    Item getItem(@PathVariable int id);
 
     @GetExchange("/Recipe/{id}")
-    Recipe getRecipe(@PathVariable String id);
+    Recipe getRecipe(@PathVariable int id);
 }

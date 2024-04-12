@@ -1,7 +1,6 @@
 package com.logankulinski.serialization;
 
 import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonLocation;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -63,8 +62,8 @@ public final class RecipeDeserializer extends StdDeserializer<Recipe> {
             throw new JsonMappingException(parser, message);
         }
 
-        String id = ingredientNode.get(idKey)
-                                  .asText();
+        int id = ingredientNode.get(idKey)
+                               .asInt();
 
         String nameKey = "Name";
 
@@ -108,7 +107,7 @@ public final class RecipeDeserializer extends StdDeserializer<Recipe> {
             throw new JsonMappingException(parser, message);
         }
 
-        String id = idNode.asText();
+        int id = idNode.asInt();
 
         JsonNode nameNode = node.get("Name");
 

@@ -1,5 +1,6 @@
 package com.logankulinski.config;
 
+import com.logankulinski.client.UniversalisClient;
 import com.logankulinski.client.XIVAPIClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,5 +22,19 @@ public class HttpClientConfiguration {
                                                                                  .build();
 
         return httpServiceProxyFactory.createClient(XIVAPIClient.class);
+    }
+
+    @Bean
+    public UniversalisClient universalisClient() {
+        String baseUrl = "https://universalis.app/api/v2";
+
+        RestClient restClient = RestClient.create(baseUrl);
+
+        RestClientAdapter restClientAdapter = RestClientAdapter.create(restClient);
+
+        HttpServiceProxyFactory httpServiceProxyFactory = HttpServiceProxyFactory.builderFor(restClientAdapter)
+                                                                                 .build();
+
+        return httpServiceProxyFactory.createClient(UniversalisClient.class);
     }
 }

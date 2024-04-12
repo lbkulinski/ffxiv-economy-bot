@@ -7,7 +7,7 @@ import java.util.List;
 
 @JsonDeserialize(using = RecipeDeserializer.class)
 public record Recipe(
-    String id,
+    int id,
 
     String name,
 
