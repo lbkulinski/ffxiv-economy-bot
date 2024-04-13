@@ -44,4 +44,8 @@ public record ListingView(
 
     int tax
 ) {
+    @Override
+    public List<MateriaView> materia() {
+        return List.copyOf(this.materia);
+    }
 }

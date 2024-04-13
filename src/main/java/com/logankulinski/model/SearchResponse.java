@@ -9,4 +9,8 @@ public record SearchResponse(
 
     @JsonAlias("Results") List<Result> results
 ) {
+    @Override
+    public List<Result> results() {
+        return List.copyOf(this.results);
+    }
 }

@@ -19,4 +19,9 @@ public record Item(
         @JsonAlias("ClassJobID") int classJobId
     ) {
     }
+
+    @Override
+    public List<Recipe> recipes() {
+        return List.copyOf(this.recipes);
+    }
 }

@@ -51,4 +51,8 @@ public record CurrentlyShownView(
 
     int unitsSold
 ) {
+    @Override
+    public List<ListingView> listings() {
+        return List.copyOf(this.listings);
+    }
 }
