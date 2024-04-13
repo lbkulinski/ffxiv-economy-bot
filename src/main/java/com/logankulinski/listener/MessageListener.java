@@ -24,10 +24,18 @@ public final class MessageListener extends ListenerAdapter {
 
     private static final String COMMAND_NAME;
 
+    private static final String NAME_OPTION_NAME;
+
+    private static final String DATA_CENTER_OPTION_NAME;
+
     private static final Logger LOGGER;
 
     static {
-        COMMAND_NAME = "item";
+        COMMAND_NAME = "recipe";
+
+        NAME_OPTION_NAME = "name";
+
+        DATA_CENTER_OPTION_NAME = "data-center";
 
         LOGGER = LoggerFactory.getLogger(MessageListener.class);
     }
@@ -39,8 +47,20 @@ public final class MessageListener extends ListenerAdapter {
         this.universalisClient = Objects.requireNonNull(universalisClient);
     }
 
-    private List<ListingView> getListings(int itemId) {
-        CurrentlyShownView currentlyShownView = this.universalisClient.getMarketBoardData("Aether", itemId);
+    private String getOptionValue(SlashCommandInteractionEvent event, String optionName) {
+        OptionMapping optionMapping = event.getOption(optionName);
+
+        if (optionMapping == null) {
+            return null;
+        }
+
+        return optionMapping.getAsString();
+    }
+
+    private List<ListingView> getListings(String dataCenter, int itemId) {
+        Objects.requireNonNull(dataCenter);
+
+        CurrentlyShownView currentlyShownView = this.universalisClient.getMarketBoardData(dataCenter, itemId);
 
         List<ListingView> listingViews = currentlyShownView.listings();
 
@@ -58,13 +78,29 @@ public final class MessageListener extends ListenerAdapter {
             return;
         }
 
-        OptionMapping nameMapping = event.getOption("name");
+        String name = this.getOptionValue(event, MessageListener.NAME_OPTION_NAME);
 
-        if (nameMapping == null) {
+        if (name == null) {
+            String message = "A name is required";
+
+            event.reply(message)
+                 .setEphemeral(true)
+                 .queue();
+
             return;
         }
 
-        String name = nameMapping.getAsString();
+        String dataCenter = this.getOptionValue(event, MessageListener.DATA_CENTER_OPTION_NAME);
+
+        if (dataCenter == null) {
+            String message = "A data center is required";
+
+            event.reply(message)
+                 .setEphemeral(true)
+                 .queue();
+
+            return;
+        }
 
         SearchResponse searchResponse = this.xivapiClient.search(name);
 
@@ -110,7 +146,7 @@ public final class MessageListener extends ListenerAdapter {
 
                 int ingredientId = ingredient.id();
 
-                List<ListingView> listings = this.getListings(ingredientId);
+                List<ListingView> listings = this.getListings(dataCenter, ingredientId);
 
                 if (listings.isEmpty()) {
                     String message = "- %s (%d) (No listings)%n".formatted(ingredientName, amount);

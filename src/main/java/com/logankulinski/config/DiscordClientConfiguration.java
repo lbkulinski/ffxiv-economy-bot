@@ -10,9 +10,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class DiscordClientConfiguration {
     @Bean
-    public JDA jda(@Value("${discord.token}") String token, MessageListener listener) {
+    public JDA jda(@Value("${discord.token}") String token, MessageListener listener) throws InterruptedException {
         JDA jda = JDABuilder.createDefault(token)
                             .build();
+
+        jda.awaitReady();
 
         jda.addEventListener(listener);
 
