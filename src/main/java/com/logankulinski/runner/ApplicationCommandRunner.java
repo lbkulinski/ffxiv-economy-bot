@@ -75,6 +75,19 @@ public final class ApplicationCommandRunner implements ApplicationRunner {
         return option;
     }
 
+    private CommandData getItemCostCommand() {
+        String name = "item-cost";
+
+        String description = "Gets the cost comparison of buying the item from the market board or crafting it";
+
+        OptionData nameOption = this.getNameOption();
+
+        OptionData dataCenterOption = this.getDataCenterOption();
+
+        return Commands.slash(name, description)
+                       .addOptions(nameOption, dataCenterOption);
+    }
+
     private CommandData getRecipeCommand() {
         String name = "recipe";
 
@@ -98,10 +111,12 @@ public final class ApplicationCommandRunner implements ApplicationRunner {
             return;
         }
 
-        CommandData command = this.getRecipeCommand();
+        CommandData itemCostCommand = this.getItemCostCommand();
+
+        CommandData recipeCommand = this.getRecipeCommand();
 
         guild.updateCommands()
-             .addCommands(command)
+             .addCommands(itemCostCommand, recipeCommand)
              .queue();
     }
 }

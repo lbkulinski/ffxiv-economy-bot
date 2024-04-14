@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Objects;
 
 @Component
-public final class MessageListener extends ListenerAdapter {
+public final class RecipeListener extends ListenerAdapter {
     private final XIVAPIClient xivapiClient;
 
     private final UniversalisClient universalisClient;
@@ -37,11 +37,11 @@ public final class MessageListener extends ListenerAdapter {
 
         DATA_CENTER_OPTION_NAME = "data-center";
 
-        LOGGER = LoggerFactory.getLogger(MessageListener.class);
+        LOGGER = LoggerFactory.getLogger(RecipeListener.class);
     }
 
     @Autowired
-    public MessageListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient) {
+    public RecipeListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient) {
         this.xivapiClient = Objects.requireNonNull(xivapiClient);
 
         this.universalisClient = Objects.requireNonNull(universalisClient);
@@ -74,11 +74,11 @@ public final class MessageListener extends ListenerAdapter {
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
         String commandName = event.getName();
 
-        if (!Objects.equals(commandName, MessageListener.COMMAND_NAME)) {
+        if (!Objects.equals(commandName, RecipeListener.COMMAND_NAME)) {
             return;
         }
 
-        String name = this.getOptionValue(event, MessageListener.NAME_OPTION_NAME);
+        String name = this.getOptionValue(event, RecipeListener.NAME_OPTION_NAME);
 
         if (name == null) {
             String message = "A name is required";
@@ -90,7 +90,7 @@ public final class MessageListener extends ListenerAdapter {
             return;
         }
 
-        String dataCenter = this.getOptionValue(event, MessageListener.DATA_CENTER_OPTION_NAME);
+        String dataCenter = this.getOptionValue(event, RecipeListener.DATA_CENTER_OPTION_NAME);
 
         if (dataCenter == null) {
             String message = "A data center is required";

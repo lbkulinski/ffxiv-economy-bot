@@ -124,6 +124,10 @@ public final class RecipeDeserializer extends StdDeserializer<Recipe> {
         for (int i = 0; i <= RecipeDeserializer.MAX_INGREDIENTS; i++) {
             Ingredient ingredient = this.getIngredient(parser, node, i);
 
+            if (ingredient == null) {
+                continue;
+            }
+
             ingredients.add(ingredient);
         }
 
