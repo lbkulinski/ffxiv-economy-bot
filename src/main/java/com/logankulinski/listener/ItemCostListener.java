@@ -1,5 +1,7 @@
 package com.logankulinski.listener;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logankulinski.client.UniversalisClient;
 import com.logankulinski.client.XIVAPIClient;
 import com.logankulinski.model.*;
@@ -8,13 +10,13 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
-import net.dv8tion.jda.api.utils.messages.MessageEditData;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -24,6 +26,8 @@ public final class ItemCostListener extends ListenerAdapter {
     private final XIVAPIClient xivapiClient;
 
     private final UniversalisClient universalisClient;
+
+    private final ObjectMapper mapper;
 
     private static final String COMMAND_NAME;
 
@@ -44,10 +48,12 @@ public final class ItemCostListener extends ListenerAdapter {
     }
 
     @Autowired
-    public ItemCostListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient) {
+    public ItemCostListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient, ObjectMapper mapper) {
         this.xivapiClient = Objects.requireNonNull(xivapiClient);
 
         this.universalisClient = Objects.requireNonNull(universalisClient);
+
+        this.mapper = Objects.requireNonNull(mapper);
     }
 
     private String getOptionValue(SlashCommandInteractionEvent event, String optionName) {
@@ -201,11 +207,38 @@ public final class ItemCostListener extends ListenerAdapter {
               - %,d gil""".formatted(ingredientCost);
         }
 
+        ButtonMetadata buttonMetadata = new ButtonMetadata(itemId, dataCenter);
+
+        String buttonMetadataJson;
+
+        try {
+            buttonMetadataJson = this.mapper.writeValueAsString(buttonMetadata);
+        } catch (JsonProcessingException e) {
+            String errorMessage = e.getMessage();
+
+            ItemCostListener.LOGGER.error(errorMessage, e);
+
+            event.getHook()
+                 .sendMessage(message)
+                 .queue();
+
+            return;
+        }
+
+        byte[] buttonMetadataBytes = buttonMetadataJson.getBytes();
+
+        String id = Base64.getEncoder()
+                          .encodeToString(buttonMetadataBytes);
+
+        String label = "Get recipe";
+
+        String toolsUnicode = "U+1F6E0";
+
         event.getHook()
              .sendMessage(message)
              .addActionRow(
-                 Button.primary("recipe", "Get recipe")
-                       .withEmoji(Emoji.fromUnicode("U+1F6E0"))
+                 Button.primary(id, label)
+                       .withEmoji(Emoji.fromUnicode(toolsUnicode))
              )
              .queue();
     }

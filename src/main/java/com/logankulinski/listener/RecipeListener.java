@@ -1,10 +1,14 @@
 package com.logankulinski.listener;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logankulinski.client.UniversalisClient;
 import com.logankulinski.client.XIVAPIClient;
 import com.logankulinski.model.*;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.InteractionHook;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -12,15 +16,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public final class RecipeListener extends ListenerAdapter {
     private final XIVAPIClient xivapiClient;
 
     private final UniversalisClient universalisClient;
+
+    private final ObjectMapper mapper;
 
     private static final String COMMAND_NAME;
 
@@ -41,10 +50,12 @@ public final class RecipeListener extends ListenerAdapter {
     }
 
     @Autowired
-    public RecipeListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient) {
+    public RecipeListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient, ObjectMapper mapper) {
         this.xivapiClient = Objects.requireNonNull(xivapiClient);
 
         this.universalisClient = Objects.requireNonNull(universalisClient);
+
+        this.mapper = Objects.requireNonNull(mapper);
     }
 
     private String getOptionValue(SlashCommandInteractionEvent event, String optionName) {
@@ -66,8 +77,82 @@ public final class RecipeListener extends ListenerAdapter {
 
         return listingViews.stream()
                            .sorted(Comparator.comparingInt(ListingView::pricePerUnit))
-                           .limit(3L)
+                           .limit(2L)
                            .toList();
+    }
+
+    private void respondToInteraction(int itemId, String dataCenter, InteractionHook hook) {
+        Objects.requireNonNull(dataCenter);
+
+        Objects.requireNonNull(hook);
+
+        Item item = this.xivapiClient.getItem(itemId);
+
+        List<Item.Recipe> recipes = item.recipes();
+
+        if (recipes.isEmpty()) {
+            String message = "No recipes were found for this item";
+
+            hook.sendMessage(message)
+                .queue();
+
+            return;
+        }
+
+        StringBuilder stringBuilder = new StringBuilder();
+
+        String itemName = item.name();
+
+        stringBuilder.append("**%s Recipe**%n".formatted(itemName));
+
+        int recipeId = recipes.getFirst()
+                              .id();
+
+        Recipe recipe = this.xivapiClient.getRecipe(recipeId);
+
+        for (Ingredient ingredient : recipe.ingredients()) {
+            if (ingredient == null) {
+                continue;
+            }
+
+            String ingredientName = ingredient.name();
+
+            int amount = ingredient.amount();
+
+            int ingredientId = ingredient.id();
+
+            List<ListingView> listings = this.getListings(dataCenter, ingredientId);
+
+            if (listings.isEmpty()) {
+                String message = "- **%s** (%d) (No listings)%n".formatted(ingredientName, amount);
+
+                stringBuilder.append(message);
+
+                continue;
+            }
+
+            String message = "- **%s** (%d)%n".formatted(ingredientName, amount);
+
+            stringBuilder.append(message);
+
+            for (ListingView listing : listings) {
+                int pricePerUnit = listing.pricePerUnit();
+
+                int quantity = listing.quantity();
+
+                String worldName = listing.worldName();
+
+                String listingMessage = "  - %,d gil on %s (%d available)%n".formatted(pricePerUnit, worldName,
+                    quantity);
+
+                stringBuilder.append(listingMessage);
+            }
+        }
+
+        String message = stringBuilder.toString();
+
+        hook.sendMessage(message)
+            .queue();
     }
 
     @Override
@@ -120,65 +205,43 @@ public final class RecipeListener extends ListenerAdapter {
 
         Result result = results.getFirst();
 
-        int resultId = result.id();
+        int itemId = result.id();
 
-        Item item = this.xivapiClient.getItem(resultId);
+        InteractionHook hook = event.getHook();
 
-        StringBuilder stringBuilder = new StringBuilder();
+        this.respondToInteraction(itemId, dataCenter, hook);
+    }
 
-        stringBuilder.append("Item found! ID: %d%n".formatted(resultId));
+    @Override
+    public void onButtonInteraction(@NotNull ButtonInteractionEvent event) {
+        String componentId = event.getComponentId();
 
-        for (Item.Recipe itemRecipe : item.recipes()) {
-            int recipeId = itemRecipe.id();
+        byte[] buttonMetadataBytes = Base64.getDecoder()
+                                           .decode(componentId);
 
-            Recipe recipe = this.xivapiClient.getRecipe(recipeId);
+        String buttonMetadataString = new String(buttonMetadataBytes);
 
-            stringBuilder.append("%nRecipe found! ID: %d%n".formatted(recipeId));
+        ButtonMetadata buttonMetadata;
 
-            for (Ingredient ingredient : recipe.ingredients()) {
-                if (ingredient == null) {
-                    continue;
-                }
+        try {
+            buttonMetadata = this.mapper.readValue(buttonMetadataString, ButtonMetadata.class);
+        } catch (JsonProcessingException e) {
+            String errorMessage = e.getMessage();
 
-                String ingredientName = ingredient.name();
+            RecipeListener.LOGGER.error(errorMessage, e);
 
-                int amount = ingredient.amount();
-
-                int ingredientId = ingredient.id();
-
-                List<ListingView> listings = this.getListings(dataCenter, ingredientId);
-
-                if (listings.isEmpty()) {
-                    String message = "- %s (%d) (No listings)%n".formatted(ingredientName, amount);
-
-                    stringBuilder.append(message);
-
-                    continue;
-                }
-
-                String message = "- %s (%d)%n".formatted(ingredientName, amount);
-
-                stringBuilder.append(message);
-
-                for (ListingView listing : listings) {
-                    int pricePerUnit = listing.pricePerUnit();
-
-                    int quantity = listing.quantity();
-
-                    String worldName = listing.worldName();
-
-                    String listingMessage = "  - %d gil/unit (%d units) on %s%n".formatted(pricePerUnit, quantity,
-                        worldName);
-
-                    stringBuilder.append(listingMessage);
-                }
-            }
+            return;
         }
 
-        String message = stringBuilder.toString();
-
-        event.getHook()
-             .editOriginal(message)
+        event.deferReply()
              .queue();
+
+        int itemId = buttonMetadata.id();
+
+        String dataCenter = buttonMetadata.dataCenter();
+
+        InteractionHook hook = event.getHook();
+
+        this.respondToInteraction(itemId, dataCenter, hook);
     }
 }
