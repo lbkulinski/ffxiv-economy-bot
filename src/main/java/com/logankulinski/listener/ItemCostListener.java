@@ -2,9 +2,14 @@ package com.logankulinski.listener;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.logankulinski.client.UniversalisClient;
 import com.logankulinski.client.XIVAPIClient;
 import com.logankulinski.model.*;
+import de.chojo.universalis.entities.Listing;
+import de.chojo.universalis.entities.Price;
+import de.chojo.universalis.rest.UniversalisRest;
+import de.chojo.universalis.rest.response.MarketBoardResponse;
+import de.chojo.universalis.worlds.DataCenter;
+import de.chojo.universalis.worlds.Worlds;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -20,12 +25,13 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
 
 @Component
 public final class ItemCostListener extends ListenerAdapter {
     private final XIVAPIClient xivapiClient;
 
-    private final UniversalisClient universalisClient;
+    private final UniversalisRest universalisClient;
 
     private final ObjectMapper mapper;
 
@@ -48,7 +54,7 @@ public final class ItemCostListener extends ListenerAdapter {
     }
 
     @Autowired
-    public ItemCostListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient, ObjectMapper mapper) {
+    public ItemCostListener(XIVAPIClient xivapiClient, UniversalisRest universalisClient, ObjectMapper mapper) {
         this.xivapiClient = Objects.requireNonNull(xivapiClient);
 
         this.universalisClient = Objects.requireNonNull(universalisClient);
@@ -71,33 +77,44 @@ public final class ItemCostListener extends ListenerAdapter {
         HIGH
     }
 
-    private ListingView getCheapestListing(String dataCenter, int itemId, Quality quality) {
+    private Listing getCheapestListing(DataCenter dataCenter, int itemId, Quality quality) {
         Objects.requireNonNull(dataCenter);
 
         Objects.requireNonNull(quality);
 
-        CurrentlyShownView marketBoardItem = this.universalisClient.getMarketBoardData(dataCenter, itemId);
+        boolean highQuality = quality == Quality.HIGH;
 
-        return marketBoardItem.listings()
-                              .stream()
-                              .sorted(Comparator.comparingInt(ListingView::pricePerUnit))
-                              .filter(listing -> {
-                                  if (quality == Quality.HIGH) {
-                                      return listing.highQuality();
-                                  }
+        MarketBoardResponse response;
 
-                                  return true;
-                              })
-                              .limit(1L)
-                              .findAny()
-                              .orElse(null);
+        try {
+            response = this.universalisClient.marketBoard()
+                                             .dataCenter(dataCenter)
+                                             .itemsIds(itemId)
+                                             .highQuality(highQuality)
+                                             .queue()
+                                             .get();
+        } catch (InterruptedException | ExecutionException e) {
+            String message = e.getMessage();
+
+            ItemCostListener.LOGGER.error(message, e);
+
+            return null;
+        }
+
+        return response.listings()
+                       .stream()
+                       .sorted(Comparator.comparingInt(listing -> listing.price()
+                                                                         .pricePerUnit()))
+                       .limit(1L)
+                       .findAny()
+                       .orElse(null);
     }
 
-    private ListingView getCheapestListing(String dataCenter, int itemId) {
+    private Listing getCheapestListing(DataCenter dataCenter, int itemId) {
         return this.getCheapestListing(dataCenter, itemId, Quality.NORMAL);
     }
 
-    private Integer getCheapestIngredientCost(String dataCenter, int itemId) {
+    private Integer getCheapestIngredientCost(DataCenter dataCenter, int itemId) {
         Objects.requireNonNull(dataCenter);
 
         Item item = this.xivapiClient.getItem(itemId);
@@ -110,7 +127,8 @@ public final class ItemCostListener extends ListenerAdapter {
                    .map(ingredients -> ingredients.stream()
                                                   .map(Ingredient::id)
                                                   .map(id -> this.getCheapestListing(dataCenter, id))
-                                                  .mapToInt(ListingView::pricePerUnit)
+                                                  .map(Listing::price)
+                                                  .mapToInt(Price::pricePerUnit)
                                                   .sum())
                    .min(Integer::compare)
                    .orElse(null);
@@ -136,9 +154,9 @@ public final class ItemCostListener extends ListenerAdapter {
             return;
         }
 
-        String dataCenter = this.getOptionValue(event, ItemCostListener.DATA_CENTER_OPTION_NAME);
+        String dataCenterString = this.getOptionValue(event, ItemCostListener.DATA_CENTER_OPTION_NAME);
 
-        if (dataCenter == null) {
+        if (dataCenterString == null) {
             String message = "A data center is required";
 
             event.reply(message)
@@ -148,7 +166,20 @@ public final class ItemCostListener extends ListenerAdapter {
             return;
         }
 
+        DataCenter dataCenter = Worlds.datacenterByName(dataCenterString);
+
+        if (dataCenter == null) {
+            String message = "The specified data center is invalid";
+
+            event.reply(message)
+                 .setEphemeral(true)
+                 .queue();
+
+            return;
+        }
+
         event.deferReply()
+             .setEphemeral(true)
              .queue();
 
         SearchResponse searchResponse = this.xivapiClient.search(name);
@@ -160,6 +191,7 @@ public final class ItemCostListener extends ListenerAdapter {
 
             event.getHook()
                  .sendMessage(message)
+                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -171,11 +203,11 @@ public final class ItemCostListener extends ListenerAdapter {
 
         int itemId = result.id();
 
-        ListingView listing = this.getCheapestListing(dataCenter, itemId);
+        Listing listing = this.getCheapestListing(dataCenter, itemId);
 
-        ListingView highQualityListing = this.getCheapestListing(dataCenter, itemId, Quality.HIGH);
+        Listing highQualityListing = this.getCheapestListing(dataCenter, itemId, Quality.HIGH);
 
-        if (listing == null) {
+        if ((listing == null) || (highQualityListing == null)) {
             event.getHook()
                  .editOriginal("No listings were found for the specified item")
                  .queue();
@@ -183,17 +215,21 @@ public final class ItemCostListener extends ListenerAdapter {
             return;
         }
 
-        int cost = listing.pricePerUnit();
+        int cost = listing.price()
+                          .pricePerUnit();
 
-        String world = listing.worldName();
+        String world = listing.world()
+                              .name();
 
-        int highQualityCost = highQualityListing.pricePerUnit();
+        int highQualityCost = highQualityListing.price()
+                                                .pricePerUnit();
 
-        String highQualityWorld = highQualityListing.worldName();
+        String highQualityWorld = highQualityListing.world()
+                                                    .name();
 
         String message = """
         **%s**
-        - **Cheapest listing**
+        - **Cheapest normal quality listing**
           - %,d gil (%s)
         - **Cheapest high quality listing**
           - %,d gil (%s)""".formatted(itemName, cost, world, highQualityCost, highQualityWorld);
@@ -207,7 +243,9 @@ public final class ItemCostListener extends ListenerAdapter {
               - %,d gil""".formatted(ingredientCost);
         }
 
-        ButtonMetadata buttonMetadata = new ButtonMetadata(itemId, dataCenter);
+        String dataCenterName = dataCenter.name();
+
+        ButtonMetadata buttonMetadata = new ButtonMetadata(dataCenterName, itemId);
 
         String buttonMetadataJson;
 
@@ -220,6 +258,7 @@ public final class ItemCostListener extends ListenerAdapter {
 
             event.getHook()
                  .sendMessage(message)
+                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -229,6 +268,8 @@ public final class ItemCostListener extends ListenerAdapter {
 
         String id = Base64.getEncoder()
                           .encodeToString(buttonMetadataBytes);
+
+        ItemCostListener.LOGGER.info("Button metadata: {}", id);
 
         String label = "Get recipe";
 
@@ -240,6 +281,7 @@ public final class ItemCostListener extends ListenerAdapter {
                  Button.primary(id, label)
                        .withEmoji(Emoji.fromUnicode(toolsUnicode))
              )
+             .setEphemeral(true)
              .queue();
     }
 }

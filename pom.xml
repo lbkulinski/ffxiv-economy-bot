@@ -41,6 +41,11 @@
             <version>5.0.0-beta.22</version>
         </dependency>
         <dependency>
+            <groupId>de.chojo.universalis</groupId>
+            <artifactId>universalis</artifactId>
+            <version>1.4.1</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>

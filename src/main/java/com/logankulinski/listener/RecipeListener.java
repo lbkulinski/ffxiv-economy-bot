@@ -2,9 +2,14 @@ package com.logankulinski.listener;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.logankulinski.client.UniversalisClient;
 import com.logankulinski.client.XIVAPIClient;
 import com.logankulinski.model.*;
+import de.chojo.universalis.entities.Listing;
+import de.chojo.universalis.entities.Price;
+import de.chojo.universalis.rest.UniversalisRest;
+import de.chojo.universalis.rest.response.MarketBoardResponse;
+import de.chojo.universalis.worlds.DataCenter;
+import de.chojo.universalis.worlds.Worlds;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -20,14 +25,13 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.ExecutionException;
 
 @Component
 public final class RecipeListener extends ListenerAdapter {
     private final XIVAPIClient xivapiClient;
 
-    private final UniversalisClient universalisClient;
+    private final UniversalisRest universalisClient;
 
     private final ObjectMapper mapper;
 
@@ -50,7 +54,7 @@ public final class RecipeListener extends ListenerAdapter {
     }
 
     @Autowired
-    public RecipeListener(XIVAPIClient xivapiClient, UniversalisClient universalisClient, ObjectMapper mapper) {
+    public RecipeListener(XIVAPIClient xivapiClient, UniversalisRest universalisClient, ObjectMapper mapper) {
         this.xivapiClient = Objects.requireNonNull(xivapiClient);
 
         this.universalisClient = Objects.requireNonNull(universalisClient);
@@ -68,20 +72,34 @@ public final class RecipeListener extends ListenerAdapter {
         return optionMapping.getAsString();
     }
 
-    private List<ListingView> getListings(String dataCenter, int itemId) {
+    private List<Listing> getListings(DataCenter dataCenter, int itemId) {
         Objects.requireNonNull(dataCenter);
 
-        CurrentlyShownView currentlyShownView = this.universalisClient.getMarketBoardData(dataCenter, itemId);
+        MarketBoardResponse response;
 
-        List<ListingView> listingViews = currentlyShownView.listings();
+        try {
+            response = this.universalisClient.marketBoard()
+                                             .dataCenter(dataCenter)
+                                             .itemsIds(itemId)
+                                             .queue()
+                                             .get();
+        } catch (InterruptedException | ExecutionException e) {
+            String message = e.getMessage();
 
-        return listingViews.stream()
-                           .sorted(Comparator.comparingInt(ListingView::pricePerUnit))
-                           .limit(2L)
-                           .toList();
+            RecipeListener.LOGGER.error(message, e);
+
+            return List.of();
+        }
+
+        return response.listings()
+                       .stream()
+                       .sorted(Comparator.comparingInt(listing -> listing.price()
+                                                                         .pricePerUnit()))
+                       .limit(2L)
+                       .toList();
     }
 
-    private void respondToInteraction(int itemId, String dataCenter, InteractionHook hook) {
+    private void respondToInteraction(DataCenter dataCenter, int itemId, InteractionHook hook) {
         Objects.requireNonNull(dataCenter);
 
         Objects.requireNonNull(hook);
@@ -94,6 +112,7 @@ public final class RecipeListener extends ListenerAdapter {
             String message = "No recipes were found for this item";
 
             hook.sendMessage(message)
+                .setEphemeral(true)
                 .queue();
 
             return;
@@ -121,7 +140,7 @@ public final class RecipeListener extends ListenerAdapter {
 
             int ingredientId = ingredient.id();
 
-            List<ListingView> listings = this.getListings(dataCenter, ingredientId);
+            List<Listing> listings = this.getListings(dataCenter, ingredientId);
 
             if (listings.isEmpty()) {
                 String message = "- **%s** (%d) (No listings)%n".formatted(ingredientName, amount);
@@ -135,12 +154,15 @@ public final class RecipeListener extends ListenerAdapter {
 
             stringBuilder.append(message);
 
-            for (ListingView listing : listings) {
-                int pricePerUnit = listing.pricePerUnit();
+            for (Listing listing : listings) {
+                Price price = listing.price();
 
-                int quantity = listing.quantity();
+                int pricePerUnit = price.pricePerUnit();
 
-                String worldName = listing.worldName();
+                int quantity = price.quantity();
+
+                String worldName = listing.world()
+                                          .name();
 
                 String listingMessage = "  - %,d gil on %s (%d available)%n".formatted(pricePerUnit, worldName,
                     quantity);
@@ -152,6 +174,7 @@ public final class RecipeListener extends ListenerAdapter {
         String message = stringBuilder.toString();
 
         hook.sendMessage(message)
+            .setEphemeral(true)
             .queue();
     }
 
@@ -175,9 +198,9 @@ public final class RecipeListener extends ListenerAdapter {
             return;
         }
 
-        String dataCenter = this.getOptionValue(event, RecipeListener.DATA_CENTER_OPTION_NAME);
+        String dataCenterString = this.getOptionValue(event, RecipeListener.DATA_CENTER_OPTION_NAME);
 
-        if (dataCenter == null) {
+        if (dataCenterString == null) {
             String message = "A data center is required";
 
             event.reply(message)
@@ -187,6 +210,8 @@ public final class RecipeListener extends ListenerAdapter {
             return;
         }
 
+        DataCenter dataCenter = Worlds.datacenterByName(dataCenterString);
+
         SearchResponse searchResponse = this.xivapiClient.search(name);
 
         List<Result> results = searchResponse.results();
@@ -195,6 +220,7 @@ public final class RecipeListener extends ListenerAdapter {
             String message = "No items were found with the name \"%s\"".formatted(name);
 
             event.reply(message)
+                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -209,7 +235,7 @@ public final class RecipeListener extends ListenerAdapter {
 
         InteractionHook hook = event.getHook();
 
-        this.respondToInteraction(itemId, dataCenter, hook);
+        this.respondToInteraction(dataCenter, itemId, hook);
     }
 
     @Override
@@ -236,12 +262,25 @@ public final class RecipeListener extends ListenerAdapter {
         event.deferReply()
              .queue();
 
-        int itemId = buttonMetadata.id();
+        String dataCenterName = buttonMetadata.dataCenter();
 
-        String dataCenter = buttonMetadata.dataCenter();
+        DataCenter dataCenter = Worlds.datacenterByName(dataCenterName);
+
+        if (dataCenter == null) {
+            String message = "Sorry, an error occurred. Please try again later";
+
+            event.getHook()
+                 .sendMessage(message)
+                 .setEphemeral(true)
+                 .queue();
+
+            return;
+        }
+
+        int itemId = buttonMetadata.id();
 
         InteractionHook hook = event.getHook();
 
-        this.respondToInteraction(itemId, dataCenter, hook);
+        this.respondToInteraction(dataCenter, itemId, hook);
     }
 }
