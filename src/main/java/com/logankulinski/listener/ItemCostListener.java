@@ -148,7 +148,6 @@ public final class ItemCostListener extends ListenerAdapter {
             String message = "A name is required";
 
             event.reply(message)
-                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -160,7 +159,6 @@ public final class ItemCostListener extends ListenerAdapter {
             String message = "A data center is required";
 
             event.reply(message)
-                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -172,7 +170,6 @@ public final class ItemCostListener extends ListenerAdapter {
             String message = "The specified data center is invalid";
 
             event.reply(message)
-                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -191,7 +188,6 @@ public final class ItemCostListener extends ListenerAdapter {
 
             event.getHook()
                  .sendMessage(message)
-                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -207,41 +203,49 @@ public final class ItemCostListener extends ListenerAdapter {
 
         Listing highQualityListing = this.getCheapestListing(dataCenter, itemId, Quality.HIGH);
 
-        if ((listing == null) || (highQualityListing == null)) {
-            event.getHook()
-                 .editOriginal("No listings were found for the specified item")
-                 .queue();
+        StringBuilder stringBuilder = new StringBuilder();
 
-            return;
+        stringBuilder.append("**%s**%n".formatted(itemName));
+
+        if (listing == null) {
+            stringBuilder.append("- **No normal quality listings found**\n");
+        } else {
+            int cost = listing.price()
+                             .pricePerUnit();
+
+            String world = listing.world()
+                                 .name();
+
+            stringBuilder.append("""
+            - **Cheapest normal quality listing**
+              - %,d gil (%s)
+            """.formatted(cost, world));
         }
 
-        int cost = listing.price()
-                          .pricePerUnit();
+        if (highQualityListing == null) {
+            stringBuilder.append("- **No high quality listings found**\n");
+        } else {
+            int highQualityCost = highQualityListing.price()
+                                                     .pricePerUnit();
 
-        String world = listing.world()
-                              .name();
+            String highQualityWorld = highQualityListing.world()
+                                                       .name();
 
-        int highQualityCost = highQualityListing.price()
-                                                .pricePerUnit();
-
-        String highQualityWorld = highQualityListing.world()
-                                                    .name();
-
-        String message = """
-        **%s**
-        - **Cheapest normal quality listing**
-          - %,d gil (%s)
-        - **Cheapest high quality listing**
-          - %,d gil (%s)""".formatted(itemName, cost, world, highQualityCost, highQualityWorld);
+            stringBuilder.append("""
+            - **Cheapest high quality listing**
+              - %,d gil (%s)
+            """.formatted(highQualityCost, highQualityWorld));
+        }
 
         Integer ingredientCost = this.getCheapestIngredientCost(dataCenter, itemId);
 
         if (ingredientCost != null) {
-            message += """
-            
+            stringBuilder.append("""
             - **Cheapest ingredient cost**
-              - %,d gil""".formatted(ingredientCost);
+              - %,d gil""".formatted(ingredientCost));
         }
+
+        String message = stringBuilder.toString();
 
         String dataCenterName = dataCenter.name();
 
@@ -258,7 +262,6 @@ public final class ItemCostListener extends ListenerAdapter {
 
             event.getHook()
                  .sendMessage(message)
-                 .setEphemeral(true)
                  .queue();
 
             return;
@@ -281,7 +284,6 @@ public final class ItemCostListener extends ListenerAdapter {
                  Button.primary(id, label)
                        .withEmoji(Emoji.fromUnicode(toolsUnicode))
              )
-             .setEphemeral(true)
              .queue();
     }
 }

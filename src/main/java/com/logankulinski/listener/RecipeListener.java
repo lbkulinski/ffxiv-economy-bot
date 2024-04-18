@@ -72,7 +72,10 @@ public final class RecipeListener extends ListenerAdapter {
         return optionMapping.getAsString();
     }
 
-    private List<Listing> getListings(DataCenter dataCenter, int itemId) {
+    private record CheapestListings(Listing normalQualityListing, Listing highQualityListing) {
+    }
+
+    private CheapestListings getListings(DataCenter dataCenter, int itemId) {
         Objects.requireNonNull(dataCenter);
 
         MarketBoardResponse response;
@@ -88,15 +91,96 @@ public final class RecipeListener extends ListenerAdapter {
 
             RecipeListener.LOGGER.error(message, e);
 
-            return List.of();
+            return null;
         }
 
-        return response.listings()
-                       .stream()
-                       .sorted(Comparator.comparingInt(listing -> listing.price()
-                                                                         .pricePerUnit()))
-                       .limit(2L)
-                       .toList();
+        Listing normalQualityListing = response.listings()
+                                               .stream()
+                                               .filter(listing -> !listing.meta()
+                                                                        .hq())
+                                               .min(Comparator.comparingInt(listing -> listing.price()
+                                                                                            .pricePerUnit()))
+                                               .orElse(null);
+
+        Listing highQualityListing = response.listings()
+                                             .stream()
+                                             .filter(listing -> listing.meta()
+                                                                        .hq())
+                                             .min(Comparator.comparingInt(listing -> listing.price()
+                                                                                            .pricePerUnit()))
+                                             .orElse(null);
+
+        return new CheapestListings(normalQualityListing, highQualityListing);
+    }
+
+    private String getIngredientsMessage(DataCenter dataCenter, Ingredient ingredient) {
+        Objects.requireNonNull(dataCenter);
+
+        Objects.requireNonNull(ingredient);
+
+        String ingredientName = ingredient.name();
+
+        int amount = ingredient.amount();
+
+        int ingredientId = ingredient.id();
+
+        CheapestListings cheapestListings = this.getListings(dataCenter, ingredientId);
+
+        if (cheapestListings == null) {
+            return null;
+        }
+
+        Listing normalQualityListing = cheapestListings.normalQualityListing();
+
+        Listing highQualityListing = cheapestListings.highQualityListing();
+
+        StringBuilder stringBuilder = new StringBuilder();
+
+        if ((normalQualityListing == null) && (highQualityListing == null)) {
+            String message = "- **%s** (%d) (No listings)%n".formatted(ingredientName, amount);
+
+            stringBuilder.append(message);
+
+            return stringBuilder.toString();
+        }
+
+        String message = "- **%s** (%d)%n".formatted(ingredientName, amount);
+
+        stringBuilder.append(message);
+
+        if (normalQualityListing != null) {
+            Price price = normalQualityListing.price();
+
+            int pricePerUnit = price.pricePerUnit();
+
+            int quantity = price.quantity();
+
+            String worldName = normalQualityListing.world()
+                                                   .name();
+
+            String listingMessage = "  - NQ: %,d gil on %s (%d available)%n".formatted(pricePerUnit, worldName,
+                quantity);
+
+            stringBuilder.append(listingMessage);
+        }
+
+        if (highQualityListing != null) {
+            Price price = highQualityListing.price();
+
+            int pricePerUnit = price.pricePerUnit();
+
+            int quantity = price.quantity();
+
+            String worldName = highQualityListing.world()
+                                                 .name();
+
+            String listingMessage = "  - HQ: %,d gil on %s (%d available)%n".formatted(pricePerUnit, worldName,
+                quantity);
+
+            stringBuilder.append(listingMessage);
+        }
+
+        return stringBuilder.toString();
     }
 
     private void respondToInteraction(DataCenter dataCenter, int itemId, InteractionHook hook) {
@@ -134,41 +218,22 @@ public final class RecipeListener extends ListenerAdapter {
                 continue;
             }
 
-            String ingredientName = ingredient.name();
+            String ingredientMessage = this.getIngredientsMessage(dataCenter, ingredient);
 
-            int amount = ingredient.amount();
+            if (ingredientMessage == null) {
+                String ingredientName = ingredient.name();
 
-            int ingredientId = ingredient.id();
+                String message = """
+                An error occurred while fetching the listings for %s. Please try again \
+                later""".formatted(ingredientName);
 
-            List<Listing> listings = this.getListings(dataCenter, ingredientId);
+                hook.sendMessage(message)
+                    .queue();
 
-            if (listings.isEmpty()) {
-                String message = "- **%s** (%d) (No listings)%n".formatted(ingredientName, amount);
-
-                stringBuilder.append(message);
-
-                continue;
+                return;
             }
 
-            String message = "- **%s** (%d)%n".formatted(ingredientName, amount);
-
-            stringBuilder.append(message);
-
-            for (Listing listing : listings) {
-                Price price = listing.price();
-
-                int pricePerUnit = price.pricePerUnit();
-
-                int quantity = price.quantity();
-
-                String worldName = listing.world()
-                                          .name();
-
-                String listingMessage = "  - %,d gil on %s (%d available)%n".formatted(pricePerUnit, worldName,
-                    quantity);
-
-                stringBuilder.append(listingMessage);
-            }
+            stringBuilder.append(ingredientMessage);
         }
 
         String message = stringBuilder.toString();
@@ -227,6 +292,7 @@ public final class RecipeListener extends ListenerAdapter {
         }
 
         event.deferReply()
+             .setEphemeral(true)
              .queue();
 
         Result result = results.getFirst();
@@ -260,6 +326,7 @@ public final class RecipeListener extends ListenerAdapter {
         }
 
         event.deferReply()
+             .setEphemeral(true)
              .queue();
 
         String dataCenterName = buttonMetadata.dataCenter();
