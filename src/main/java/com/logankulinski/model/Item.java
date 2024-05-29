@@ -22,6 +22,10 @@ public record Item(
 
     @Override
     public List<Recipe> recipes() {
+        if (this.recipes == null) {
+            return List.of();
+        }
+
         return List.copyOf(this.recipes);
     }
 }

@@ -6,6 +6,7 @@ import com.logankulinski.client.XIVAPIClient;
 import com.logankulinski.model.*;
 import de.chojo.universalis.entities.Listing;
 import de.chojo.universalis.entities.Price;
+import de.chojo.universalis.entities.views.MateriaView;
 import de.chojo.universalis.rest.UniversalisRest;
 import de.chojo.universalis.rest.response.MarketBoardResponse;
 import de.chojo.universalis.worlds.DataCenter;
@@ -119,6 +120,8 @@ public final class ItemCostListener extends ListenerAdapter {
 
         Item item = this.xivapiClient.getItem(itemId);
 
+        ItemCostListener.LOGGER.info("Item: {}", item);
+
         return item.recipes()
                    .stream()
                    .map(Item.Recipe::id)
@@ -129,6 +132,7 @@ public final class ItemCostListener extends ListenerAdapter {
                                                   .map(id -> this.getCheapestListing(dataCenter, id))
                                                   .map(Listing::price)
                                                   .mapToInt(Price::pricePerUnit)
+                                                  .filter(Objects::nonNull)
                                                   .sum())
                    .min(Integer::compare)
                    .orElse(null);
@@ -211,30 +215,51 @@ public final class ItemCostListener extends ListenerAdapter {
             stringBuilder.append("- **No normal quality listings found**\n");
         } else {
             int cost = listing.price()
-                             .pricePerUnit();
+                              .pricePerUnit();
 
             String world = listing.world()
-                                 .name();
+                                  .name();
+
+            int quantity = listing.price()
+                                  .quantity();
 
             stringBuilder.append("""
             - **Cheapest normal quality listing**
-              - %,d gil (%s)
-            """.formatted(cost, world));
+              - %,d gil (%d available on %s)
+            """.formatted(cost, quantity, world));
         }
 
         if (highQualityListing == null) {
             stringBuilder.append("- **No high quality listings found**\n");
         } else {
             int highQualityCost = highQualityListing.price()
-                                                     .pricePerUnit();
+                                                    .pricePerUnit();
+
+            int highQualityQuantity = highQualityListing.price()
+                                                        .quantity();
 
             String highQualityWorld = highQualityListing.world()
-                                                       .name();
+                                                        .name();
 
             stringBuilder.append("""
             - **Cheapest high quality listing**
-              - %,d gil (%s)
-            """.formatted(highQualityCost, highQualityWorld));
+              - %,d gil (%d available on %s)
+            """.formatted(highQualityCost, highQualityQuantity, highQualityWorld));
+
+            List<MateriaView> materias = highQualityListing.meta()
+                                                           .materia();
+
+            if (!materias.isEmpty()) {
+                stringBuilder.append("  - **Materia**\n");
+
+                for (MateriaView meteria : materias) {
+                    int materiaId = meteria.materiaId();
+
+                    int slotId = meteria.slotId();
+
+                    stringBuilder.append("    - ID %d, Slot %d\n".formatted(materiaId, slotId));
+                }
+            }
         }
 
         Integer ingredientCost = this.getCheapestIngredientCost(dataCenter, itemId);
