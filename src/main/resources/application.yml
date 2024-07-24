@@ -3,3 +3,8 @@ xivapi:
 discord:
   token: ${DISCORD_TOKEN}
   guild-id: ${DISCORD_GUILD_ID}
+  channel-id: ${DISCORD_CHANNEL_ID}
+logging:
+  level:
+    de.chojo.universalis.entities: OFF
+    de.chojo.universalis.rest: OFF
